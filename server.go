@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -44,12 +45,15 @@ func getPic(name string) []byte {
 	return file
 }
 func main() {
-	router := gin.Default()
+	router := gin.Default() // add log file
+	f, _ := os.Create("server.log")
+	gin.DefaultWriter = io.MultiWriter(f)
 	router.GET("/test", func(c *gin.Context) {
 		c.JSON(200, gin.H{
 			"1": "1",
 		})
 	})
+
 	router.POST("/picmaker", func(c *gin.Context) {
 		// TODO: decide get post data from json file or post data
 		id := c.Query("id")
