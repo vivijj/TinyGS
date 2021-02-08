@@ -7,11 +7,13 @@
 ### bench
 use postman to test it & longest response time is about 3s
 
-2. Picmaker
+### Picmaker
 make picture with the message the user set
-Method
-POST
-URL
-/picmaker/${useid}
-DATA
-message
+
+
+- Method:
+ POST
+- URL:
+ /picmaker/${useid}
+- DATA:
+ message
