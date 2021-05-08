@@ -1,9 +1,11 @@
 package main
 
 import (
-	"io"
+	"fmt"
+	"github.com/TinyGS/config"
+	"github.com/TinyGS/logger"
+	"go.uber.org/zap"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 	"time"
@@ -13,9 +15,6 @@ import (
 
 // the max time the client wait the response for
 const WAITPERIOD int = 5
-const picDir string = "/home/ljj/pic/"
-const textDir string = "/home/ljj/text/"
-
 func exist(path string) bool {
 	_, err := os.Stat(path)
 	if err != nil {
@@ -27,51 +26,75 @@ func exist(path string) bool {
 	return true
 }
 
-func getPicPath(name string) string {
-	return picDir + name + ".jpg"
+// getKey set the key use in the filename of text&picture
+func getKey(id string) (k string){
+	t := time.Now().Format("20060102150405")
+	k = id + "_" + t
+	return
 }
 
-func getTextPath(name string) string {
-	return textDir + name + ".txt"
+func generateText(id, message string) {
+	textPath := config.Conf.CacheConfig.TextFolder + getKey(id) + ".txt"
+	fmt.Println("textpath is:", textPath)
+	if exist(textPath) {
+		panic("some thing wrong with the AI model batch")
+	}
+	err := ioutil.WriteFile(textPath, []byte(message), 0644)
+	if err != nil {
+		zap.L().Error("can't create the text file", zap.String("textPath", textPath))
+	}
 }
+
+func generatePic(id string) string{
+	picPath := config.Conf.CacheConfig.PicFolder + getKey(id) + ".jpg"
+	for i:= 0; i < 4; i++ {
+		if exist(picPath) {
+			return picPath
+		}
+		time.Sleep(1 * time.Second)
+	}
+	return ""
+}
+
+func picMaker(c * gin.Context) {
+	id := c.Query("id")
+	msg := c.PostForm("message")
+
+	generateText(id, msg)
+	picPath := generatePic(id)
+	fmt.Println("picpath is :", picPath)
+	if picPath == "" {
+		fmt.Println("pic path is nil")
+		panic("pic path is null")
+		//c.String(http.StatusInternalServerError, "something wrong with the server model")
+	} else {
+		fmt.Println("picpath is not nil")
+		//c.File(picPath)
+	}
+}
+
 
 func main() {
-	gin.SetMode(gin.ReleaseMode)
-	f, _ := os.Create("serverGin.log")
-	gin.DefaultWriter = io.MultiWriter(f)
+	if len(os.Args) <= 1 {
+		return
+	}
+	if err := config.Init(os.Args[1]); err != nil {
+		panic(err)
+	}
+	// init logger
+	if err := logger.InitLogger(config.Conf.LogConfig); err != nil {
+		fmt.Printf("init logger failed, err:%v\n", err)
+		return
+	}
+	gin.SetMode(config.Conf.Mode)
+	router := gin.New()
+	router.Use(logger.GinLogger(),logger.GinRecovery(false))
 
-	router := gin.Default()
-
-	router.POST("/picmaker", func(c *gin.Context) {
-		// TODO: decide get post data from json file or post data
-		id := c.Query("id")
-		message := c.PostForm("message")
-		filePath1 := getTextPath(id)
-		msg := []byte(message)
-		err := ioutil.WriteFile(filePath1, msg, 0644)
-		if err != nil {
-			log.Fatal(err)
-		}
-		// c.FileAttachment("/pic/"+id+".jpg", "1.jpg")
-		picPath := getPicPath(id)
-		getPicSuc := false
-		for i := 0; i < WAITPERIOD; i++ {
-			if exist(picPath) {
-				c.File(picPath)
-				getPicSuc = true
-				break
-			}
-			time.Sleep(1 * time.Second)
-		}
-		if getPicSuc {
-			err := os.Remove(picPath)
-			if err != nil {
-				log.Fatal(err)
-			}
-		} else {
-			// if can't get the pic after 5s, may be something wrong with the model or server
-			c.String(http.StatusInternalServerError, "something wrong with the server model")
-		}
+	router.GET("/", func(C *gin.Context) {
+		C.String(http.StatusOK, "Restful-API")
 	})
-	router.Run(":8081")
+	router.POST("/picmaker", picMaker)
+
+	addr := fmt.Sprintf(":%v", config.Conf.Port)
+	_ = router.Run(addr)
 }

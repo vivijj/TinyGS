@@ -1,5 +1,8 @@
 ## TinyGS
-### Tiny gin server -- Simplest webser implement by Gin
+### Tiny gin server -- Simplest restfulAPI webserver 
+
+use Gin as the web framework and Zap for fast logging
+
 
 ### How to run it ?
 ``` go run server.go ```
