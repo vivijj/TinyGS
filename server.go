@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -15,6 +16,15 @@ import (
 
 // the max time the client wait the response for
 const WAITPERIOD int = 5
+const CONN = 100
+const DELETEDURATION = 1 // hours
+// use to delete the pic after serve it
+type ExpirePic struct {
+	sync.RWMutex
+	expirePic []string
+}
+var expirePicture = &ExpirePic{expirePic: make([]string, CONN)}
+
 func exist(path string) bool {
 	_, err := os.Stat(path)
 	if err != nil {
@@ -47,7 +57,7 @@ func generateText(id, message string) {
 
 func generatePic(id string) string{
 	picPath := config.Conf.CacheConfig.PicFolder + getKey(id) + ".jpg"
-	for i:= 0; i < 4; i++ {
+	for i:= 0; i < WAITPERIOD; i++ {
 		if exist(picPath) {
 			return picPath
 		}
@@ -65,11 +75,12 @@ func picMaker(c * gin.Context) {
 	fmt.Println("picpath is :", picPath)
 	if picPath == "" {
 		fmt.Println("pic path is nil")
-		panic("pic path is null")
-		//c.String(http.StatusInternalServerError, "something wrong with the server model")
+		c.String(http.StatusInternalServerError, "something wrong with the server model")
 	} else {
 		fmt.Println("picpath is not nil")
-		//c.File(picPath)
+		c.File(picPath)
+		// indicate that the pic could be safe delete
+		expirePicture.expirePic = append(expirePicture.expirePic, picPath)
 	}
 }
 
@@ -89,6 +100,25 @@ func main() {
 	gin.SetMode(config.Conf.Mode)
 	router := gin.New()
 	router.Use(logger.GinLogger(),logger.GinRecovery(false))
+
+	go func() {
+		t:= time.NewTicker(DELETEDURATION *time.Hour)
+		for {
+			<- t.C
+			// add the lock to ensure that no goroutine append the slice when delete picture
+			expirePicture.Lock()
+			for _, v := range expirePicture.expirePic {
+				err := os.Remove(v)
+				if err != nil {
+					zap.L().Error("fail to remove the file",zap.String("path",v),zap.Any("error",err))
+				}
+			}
+			// clean up the expirePic after delete the picture
+			expirePicture.expirePic = expirePicture.expirePic[:0]
+			zap.L().Info("finish delete the expire pic")
+			expirePicture.Unlock()
+		}
+	}()
 
 	router.GET("/", func(C *gin.Context) {
 		C.String(http.StatusOK, "Restful-API")

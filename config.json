@@ -9,7 +9,7 @@
     "max_backups": 10
   },
   "cache": {
-    "pic_folder": "./pic/",
-    "text_folder": "./text/"
+    "pic_folder": "/home/ljj/pic/",
+    "text_folder": "/home/ljj/text/"
   }
 }
